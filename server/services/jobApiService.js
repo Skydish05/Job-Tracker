@@ -39,7 +39,7 @@ export function normalizeJob(raw) {
   };
 }
 
-export async function fetchJobs({ q = '', category = 'software-dev', refresh = false } = {}) {
+export async function fetchJobs({ q = '', category = 'all', refresh = false } = {}) {
   const key = `${q}|${category}`;
   const hit = cache.get(key);
   if (!refresh && hit && Date.now() - hit.at < CACHE_TTL_MS) {

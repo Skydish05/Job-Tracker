@@ -4,13 +4,13 @@ import { api } from '../services/api.js';
 import { state } from '../state.js';
 
 const CATEGORIES = [
+  ['all', 'All categories'],
   ['software-dev', 'Software development'],
   ['data', 'Data'],
   ['product', 'Product'],
   ['design', 'Design'],
   ['qa', 'QA'],
   ['devops', 'DevOps / sysadmin'],
-  ['all', 'All categories'],
 ];
 
 export async function JobFeed({ navigate }) {
@@ -25,14 +25,14 @@ export async function JobFeed({ navigate }) {
 
   async function saveJob(job) {
     try {
-      await api.createApplication({
+      const saved = await api.createApplication({
         company: job.company,
         role: job.title,
         status: 'wishlist',
         link: job.url,
         notes: job.tags.length ? `Tags: ${job.tags.join(', ')}` : '',
       });
-      toast('Saved to your tracker');
+      toast(saved.duplicate ? 'Already in your tracker' : 'Saved to your tracker');
       return true;
     } catch (err) {
       toast(err.message, true);
@@ -56,7 +56,9 @@ export async function JobFeed({ navigate }) {
           'div',
           { class: 'row' },
           h('span', { class: 'chip' }, data.source === 'live' ? '● Live postings' : '● Sample postings (offline)'),
-          h('span', { class: 'hint' }, `${data.total} result${data.total === 1 ? '' : 's'}, best match first`)
+          h('span', { class: 'hint' }, `${data.total} result${data.total === 1 ? '' : 's'}, best match first`),
+          data.source === 'live' &&
+            h('span', { class: 'hint' }, 'Jobs via ', h('a', { href: 'https://remotive.com', target: '_blank', rel: 'noopener noreferrer' }, 'Remotive'))
         ),
         data.warning && h('div', { class: 'notice warn' }, data.warning),
         !data.profileComplete &&
@@ -73,7 +75,7 @@ export async function JobFeed({ navigate }) {
   }
 
   root.append(
-    h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Job Feed'), h('p', { class: 'subtitle' }, 'Real postings, ranked by how well they match your profile.'))),
+    h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Job Feed'), h('p', { class: 'subtitle' }, 'Real remote job postings, ranked by how well they match your profile.'))),
     h(
       'form',
       {

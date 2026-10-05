@@ -69,7 +69,9 @@ export function createApp() {
 // Start listening only when run directly (tests import createApp instead).
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT) || 3000;
-  createApp().listen(port, () => {
+  // Loopback only: this is a single-user app with no login, so it should not
+  // be reachable from other machines on the network.
+  createApp().listen(port, '127.0.0.1', () => {
     console.log(`Job Tracker running at http://localhost:${port}`);
     if (!process.env.GEMINI_API_KEY) {
       console.log('Tip: set GEMINI_API_KEY to enable AI-written cover letters (template drafts otherwise).');

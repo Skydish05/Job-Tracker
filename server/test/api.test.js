@@ -71,6 +71,28 @@ test('applications CRUD lifecycle', async () => {
   assert.equal(r.status, 404);
 });
 
+test('saving the same posting link twice does not create a copy', async () => {
+  const job = { company: 'Dup Co', role: 'Dev', status: 'wishlist', link: 'https://example.com/jobs/1' };
+  const first = await call('POST', '/api/applications', job);
+  assert.equal(first.status, 200);
+  assert.equal(first.json.duplicate, undefined);
+
+  const second = await call('POST', '/api/applications', job);
+  assert.equal(second.status, 200);
+  assert.equal(second.json.duplicate, true);
+  assert.equal(second.json.id, first.json.id);
+
+  const list = await call('GET', '/api/applications');
+  assert.equal(list.json.filter((a) => a.link === job.link).length, 1);
+
+  // Entries without a link are never treated as duplicates.
+  const a = await call('POST', '/api/applications', { company: 'No Link', role: 'Dev' });
+  const b = await call('POST', '/api/applications', { company: 'No Link', role: 'Dev' });
+  assert.notEqual(a.json.id, b.json.id);
+
+  for (const id of [first.json.id, a.json.id, b.json.id]) await call('DELETE', `/api/applications/${id}`);
+});
+
 test('applications validation', async () => {
   let r = await call('POST', '/api/applications', { company: '', role: 'Dev' });
   assert.equal(r.status, 400);

@@ -32,9 +32,9 @@ export async function ApplicationForm({ params, navigate }) {
           notes: notes.value,
         };
         try {
-          if (editing) await api.updateApplication(app.id, payload);
-          else await api.createApplication(payload);
-          toast(editing ? 'Changes saved' : 'Application added');
+          const saved = editing ? await api.updateApplication(app.id, payload) : await api.createApplication(payload);
+          if (saved.duplicate) toast('An application with this link is already in your tracker');
+          else toast(editing ? 'Changes saved' : 'Application added');
           navigate('#/');
         } catch (err) {
           toast(err.message, true);

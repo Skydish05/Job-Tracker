@@ -20,7 +20,7 @@ export const api = {
   getProfile: () => request('GET', '/profile'),
   saveProfile: (data) => request('PUT', '/profile', data),
 
-  getJobs: ({ q = '', category = 'software-dev', refresh = false } = {}) => {
+  getJobs: ({ q = '', category = 'all', refresh = false } = {}) => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (category) params.set('category', category);

@@ -46,11 +46,13 @@ export function templateDraft(profile, job) {
       profile.experience
     ] || 'a motivated candidate';
   const intro = profile.name ? `My name is ${profile.name}, and I am` : 'I am';
+  let summary = (profile.summary || '').trim().replace(/\s+/g, ' ');
+  if (summary && !/[.!?]$/.test(summary)) summary += '.';
 
   return (
     `${intro} writing to apply for the ${job.title} position at ${job.company}. ` +
     `As ${levelText}, I was drawn to this role because ${skillText} lines up closely with what the position involves. ` +
-    `${profile.summary ? profile.summary.trim().replace(/\s+/g, ' ') + ' ' : ''}` +
+    `${summary ? summary + ' ' : ''}` +
     `I would welcome the chance to contribute to ${job.company} and to keep growing alongside your team.`
   );
 }

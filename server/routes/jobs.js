@@ -3,12 +3,12 @@ import { rankJobs } from '../services/rankingService.js';
 import { getProfile } from './profile.js';
 
 export function registerJobs(router) {
-  // GET /api/jobs?q=react&category=software-dev&refresh=1&min=20
+  // GET /api/jobs?q=react&category=software-dev&refresh=1&min=20 (category defaults to all)
   router.get('/api/jobs', async ({ query }) => {
     const profile = getProfile();
     const { jobs, source, cached, warning } = await fetchJobs({
       q: (query.q || '').trim(),
-      category: query.category || 'software-dev',
+      category: query.category || 'all',
       refresh: query.refresh === '1',
     });
 

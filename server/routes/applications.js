@@ -55,6 +55,12 @@ export function registerApplications(router) {
 
   router.post('/api/applications', ({ body }) => {
     const data = clean(body);
+    // Saving the same posting twice (e.g. from the job feed after a reload)
+    // returns the existing row instead of creating a copy.
+    if (data.link) {
+      const existing = db.prepare('SELECT * FROM applications WHERE link = ? ORDER BY id LIMIT 1').get(data.link);
+      if (existing) return { ...existing, duplicate: true };
+    }
     const result = db
       .prepare(
         `INSERT INTO applications (company, role, status, deadline, link, notes)
