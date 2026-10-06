@@ -2,14 +2,15 @@ import './setup.js'; // must stay first: points the DB at :memory: before db.js 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../index.js';
-import { scoreJob, rankJobs } from '../services/rankingService.js';
 import { normalizeJob, stripHtml } from '../services/jobApiService.js';
+import { jobRepository } from '../services/jobRepository.js';
+import { db } from '../db/db.js';
 
 let server;
 let base;
 
 before(async () => {
-  // Make the live job API fail fast so tests exercise the sample fallback.
+  // External services fail fast; the app must show an honest empty state.
   globalThis.fetch = async () => {
     throw new Error('network disabled in tests');
   };
@@ -120,20 +121,108 @@ test('profile read and update', async () => {
   assert.equal(r.status, 400);
 });
 
-test('job feed ranks by profile and falls back to sample data', async () => {
+test('job feed reports unavailable sources without substituting sample jobs', async () => {
   const r = await call('GET', '/api/jobs');
   assert.equal(r.status, 200);
-  assert.equal(r.json.source, 'sample');
+  assert.equal(r.json.source, 'empty');
   assert.ok(r.json.warning);
-  assert.equal(r.json.profileComplete, true);
-  const scores = r.json.jobs.map((j) => j.match.score);
-  assert.deepEqual(scores, [...scores].sort((a, b) => b - a));
-  // Entry-level React/SQL profile should rank the junior full-stack job above the senior Java one.
-  const titles = r.json.jobs.map((j) => j.title);
-  assert.ok(titles.indexOf('Junior Full-Stack Developer') < titles.indexOf('Senior Backend Engineer'));
+  assert.deepEqual(r.json.jobs, []);
+  assert.equal(r.json.sources.length, 3);
+  assert.ok(r.json.sources.every((source) => source.status === 'error'));
+  assert.equal(r.json.discovery.enabled, false);
+});
 
-  const filtered = await call('GET', '/api/jobs?q=python');
-  assert.ok(filtered.json.jobs.every((j) => /python/i.test(`${j.title} ${j.tags.join(' ')} ${j.description}`)));
+test('job feed paginates beyond 50 and combines keyword, category, source and region filters', async () => {
+  const jobs = Array.from({ length: 65 }, (_, i) => ({
+    id: `remotive:${i}`, title: `React Developer ${i}`, company: `Company ${i}`,
+    tags: ['react'], description: 'Build React interfaces', category: 'Software Development',
+    location: i % 2 ? 'Seoul, South Korea' : 'Toronto, Canada', jobType: 'full_time', salary: '',
+    url: `https://example.com/jobs/${i}`, postedAt: i === 64 ? '' : new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(), remote: false,
+    sourceId: 'remotive', sourceName: 'Remotive', sourceUrl: 'https://remotive.com',
+    verification: 'listed', discoveredAt: '2026-01-02T00:00:00.000Z',
+  }));
+  jobRepository.writeSource('remotive', jobs, Date.now());
+  jobRepository.writeSource('arbeitnow', [], Date.now());
+  jobRepository.writeSource('remoteok', [], Date.now());
+  try {
+    const first = await call('GET', '/api/jobs?limit=50');
+    const second = await call('GET', '/api/jobs?offset=50&limit=50');
+    assert.equal(first.json.total, 65);
+    assert.equal(first.json.jobs.length, 50);
+    assert.equal(first.json.hasMore, true);
+    assert.equal(second.json.jobs.length, 15);
+    assert.equal(second.json.hasMore, false);
+    assert.equal(new Set([...first.json.jobs, ...second.json.jobs].map((job) => job.id)).size, 65);
+    const filtered = await call('GET', '/api/jobs?q=react&category=software-dev&region=seoul&source=remotive&limit=100');
+    assert.equal(filtered.json.total, 32);
+    assert.ok(filtered.json.jobs.every((job) => job.location.includes('Seoul')));
+    const wrongCategory = await call('GET', '/api/jobs?q=react&category=design');
+    assert.equal(wrongCategory.json.total, 0);
+    assert.equal(first.json.jobs[0].id, 'remotive:64'); // Missing publication dates use discovery time.
+    assert.equal(first.json.jobs[1].id, 'remotive:63');
+    assert.ok(first.json.jobs.every((job) => !Object.hasOwn(job, 'match')));
+    assert.equal(first.json.profileComplete, undefined);
+    // Legacy score parameters no longer filter jobs out.
+    assert.equal((await call('GET', '/api/jobs?min=100')).json.total, 65);
+  } finally {
+    db.exec('DELETE FROM job_source_cache');
+  }
+});
+
+test('job search validates inputs and discovery requires configured services', async () => {
+  for (const query of ['offset=-1', 'offset=1.5', 'limit=101', 'region=invalid', 'source=invalid', 'category=invalid']) {
+    assert.equal((await call('GET', `/api/jobs?${query}`)).status, 400);
+  }
+  assert.equal((await call('POST', '/api/jobs/discover', { q: 'React', region: 'seoul' })).status, 503);
+  assert.equal((await call('POST', '/api/jobs/discover', { q: 'React', region: 'invalid' })).status, 400);
+  assert.equal((await call('POST', '/api/jobs/discover', { q: [] })).status, 400);
+  assert.equal((await call('POST', '/api/jobs/discover', { q: 'React', target: 'unknown' })).status, 400);
+  assert.equal((await call('POST', '/api/jobs/discover', { q: 'React', target: ['linkedin'] })).status, 400);
+});
+
+test('web discovery stores evidence-backed jobs, applies the selected region, and preserves them on failure', async () => {
+  const originalFetch = globalThis.fetch;
+  const content = 'Acme is hiring a Backend Engineer in Seoul, South Korea. Build production APIs using Node.js and SQL.';
+  process.env.GEMINI_API_KEY = 'test-key';
+  process.env.TAVILY_API_KEY = 'test-search-key';
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes('api.tavily.com')) {
+      assert.match(JSON.parse(options.body).query, /Seoul/);
+      assert.deepEqual(JSON.parse(options.body).include_domains, ['linkedin.com']);
+      return new Response(JSON.stringify({ results: [{ title: 'Backend Engineer at Acme', url: 'https://kr.linkedin.com/jobs/view/backend-engineer-123456', content }] }));
+    }
+    if (String(url).includes('generativelanguage.googleapis.com')) {
+      return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ jobs: [{
+        sourceIndex: 0, title: 'Backend Engineer', company: 'Acme', location: 'Seoul, South Korea',
+        jobType: '', salary: '', tags: ['Node.js', 'SQL'], postedAt: '', deadline: '', evidence: content,
+        isSingleJob: true, isOpen: true,
+      }] }) }] } }] }));
+    }
+    throw new Error('Unexpected network request');
+  };
+  try {
+    const result = await call('POST', '/api/jobs/discover', { q: 'Backend Engineer', region: 'seoul', target: 'linkedin' });
+    assert.equal(result.status, 200);
+    assert.equal(result.json.jobs.length, 1);
+    assert.equal(result.json.jobs[0].verification, 'search-discovered');
+    assert.equal(result.json.target, 'linkedin');
+    assert.equal(result.json.jobs[0].platform, 'linkedin');
+    const feed = await call('GET', '/api/jobs?region=seoul&source=web');
+    assert.equal(feed.json.total, 1);
+    assert.equal((await call('GET', '/api/jobs?region=seoul&source=linkedin')).json.total, 1);
+    assert.equal((await call('GET', '/api/jobs?region=seoul&source=indeed')).json.total, 0);
+    assert.equal((await call('GET', '/api/jobs?region=europe&source=web')).json.total, 0);
+    globalThis.fetch = async () => { throw new Error('provider failed with secret diagnostic'); };
+    const failure = await call('POST', '/api/jobs/discover', { q: 'new failed search', region: 'seoul' });
+    assert.equal(failure.status, 502);
+    assert.ok(!failure.text.includes('secret diagnostic'));
+    assert.equal(jobRepository.readDiscoveries().length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.TAVILY_API_KEY;
+    db.exec('DELETE FROM discovered_jobs');
+  }
 });
 
 test('cover letter falls back to a template without an API key', async () => {
@@ -153,30 +242,6 @@ test('static client and unknown api routes', async () => {
   assert.equal(r.status, 404);
   r = await call('GET', '/../server/index.js');
   assert.notEqual(r.status, 200);
-});
-
-test('ranking details', () => {
-  const profile = { skills: 'c++, node.js, ci/cd', target_roles: 'backend engineer', experience: 'senior' };
-  const job = {
-    title: 'Backend Engineer',
-    tags: ['node.js', 'ci/cd'],
-    description: 'We use C++ and Node.js daily.',
-    postedAt: '',
-  };
-  const m = scoreJob(job, profile);
-  assert.deepEqual(m.matchedSkills.sort(), ['c++', 'ci/cd', 'node.js']);
-  assert.deepEqual(m.matchedRoles, ['backend engineer']);
-  assert.ok(m.score > 50 && m.score <= 100);
-
-  // Empty profile scores everything 0 rather than dividing by zero.
-  assert.equal(scoreJob(job, { skills: '', target_roles: '', experience: 'entry' }).score, 0);
-  // "java" must not match inside "javascript".
-  assert.deepEqual(
-    scoreJob({ title: 'JavaScript Dev', tags: [], description: '', postedAt: '' }, { skills: 'java', target_roles: '', experience: 'mid' })
-      .matchedSkills,
-    []
-  );
-  assert.equal(rankJobs([], profile).length, 0);
 });
 
 test('job normalisation strips html', () => {

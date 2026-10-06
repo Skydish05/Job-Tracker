@@ -43,8 +43,8 @@ export async function Profile() {
       },
     },
     h('div', { class: 'grid2' }, field('Name', name), field('Experience level', level)),
-    field('Skills', skills, 'Comma-separated. These drive the match score in the Job Feed.'),
-    field('Target roles', roles, 'Comma-separated. A job whose title contains all words of a role gets a boost.'),
+    field('Skills', skills, 'Comma-separated. Used to build job searches and describe your skills in cover letter drafts.'),
+    field('Target roles', roles, 'Comma-separated. Guides which roles to look for in web searches.'),
     field('About you', summary),
     h('div', { class: 'row' }, saveBtn)
   );
@@ -52,7 +52,7 @@ export async function Profile() {
   return h(
     'div',
     {},
-    h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Profile'), h('p', { class: 'subtitle' }, 'Used to rank job postings and to write your cover letter drafts.'))),
+    h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Profile'), h('p', { class: 'subtitle' }, 'Used to search for relevant job postings and write your cover letter drafts.'))),
     form
   );
 }

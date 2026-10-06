@@ -2,5 +2,6 @@
 // letter" on a job pre-fills the Cover Letter page).
 export const state = {
   coverLetterJob: null,
-  feed: { q: '', category: 'all' },
+  discoveryTarget: 'all',
+  feed: { q: '', category: 'all', region: 'all', source: 'all' },
 };

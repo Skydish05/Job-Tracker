@@ -20,13 +20,18 @@ export const api = {
   getProfile: () => request('GET', '/profile'),
   saveProfile: (data) => request('PUT', '/profile', data),
 
-  getJobs: ({ q = '', category = 'all', refresh = false } = {}) => {
+  getJobs: ({ q = '', category = 'all', region = 'all', source = 'all', offset = 0, limit = 25, refresh = false } = {}) => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (category) params.set('category', category);
+    if (region) params.set('region', region);
+    if (source) params.set('source', source);
+    params.set('offset', String(offset));
+    params.set('limit', String(limit));
     if (refresh) params.set('refresh', '1');
     return request('GET', `/jobs?${params}`);
   },
+  discoverJobs: ({ q = '', region = 'all', target = 'all' } = {}) => request('POST', '/jobs/discover', { q, region, target }),
 
   generateCoverLetter: (job) => request('POST', '/cover-letter', { job }),
 };
