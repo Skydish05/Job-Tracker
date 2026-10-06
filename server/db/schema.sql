@@ -22,3 +22,17 @@ CREATE TABLE IF NOT EXISTS profile (
 );
 
 INSERT OR IGNORE INTO profile (id) VALUES (1);
+
+-- Successful empty snapshots replace old jobs, so removed listings disappear.
+CREATE TABLE IF NOT EXISTS job_source_cache (
+  source_id TEXT PRIMARY KEY,
+  jobs_json TEXT NOT NULL,
+  fetched_at INTEGER NOT NULL
+);
+
+-- Search discoveries are unverified leads, retained for at most 24 hours.
+CREATE TABLE IF NOT EXISTS discovered_jobs (
+  url TEXT PRIMARY KEY,
+  job_json TEXT NOT NULL,
+  discovered_at INTEGER NOT NULL
+);

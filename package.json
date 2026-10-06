@@ -2,7 +2,7 @@
   "name": "job-tracker",
   "version": "1.0.0",
   "private": true,
-  "description": "Phase 1 project: Job Application Tracker with job feed and AI cover letter assistant (zero dependencies, Node 22.13+)",
+  "description": "Job tracker with multiple job feeds, regional search, evidence-based AI discovery and cover letters (zero dependencies, Node 22.13+)",
   "type": "module",
   "engines": { "node": ">=22.13" },
   "scripts": {
